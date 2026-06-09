@@ -214,46 +214,24 @@ function chime(freq=880, dur=0.4, gain=0.05){
   o.connect(g).connect(audioCtx.destination);
   o.start(); o.stop(audioCtx.currentTime + dur);
 }
-/* ambient music: sparse, soft pentatonic tones — like wind chimes far away.
-   Rainy forecast picks slightly lower, slower notes; dry picks brighter ones. */
-let ambientTimer = null, ambientMood = 0; // 0 = dry/bright, 1 = rainy/mellow
-const SCALE_BRIGHT = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50]; // C major pent.
-const SCALE_MELLOW = [392.00, 440.00, 493.88, 587.33, 659.25];          // G major pent. lower
-function playTone(freq, dur, vol){
+/* UI clicks only — no ambience, no music */
+function click(){
+  if(!soundOn) return;
+  ensureAudio();
   const t0 = audioCtx.currentTime;
   const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-  o.type = "sine"; o.frequency.value = freq;
-  // soft harmonic an octave up for shimmer
-  const o2 = audioCtx.createOscillator(), g2 = audioCtx.createGain();
-  o2.type = "sine"; o2.frequency.value = freq*2; g2.gain.value = 0.25;
-  g.gain.setValueAtTime(0, t0);
-  g.gain.linearRampToValueAtTime(vol, t0 + dur*0.3);        // slow bloom
-  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);    // long fade
-  o.connect(g); o2.connect(g2).connect(g); g.connect(audioCtx.destination);
-  o.start(t0); o2.start(t0); o.stop(t0+dur); o2.stop(t0+dur);
+  o.type = "square"; o.frequency.value = 1800;
+  g.gain.setValueAtTime(0.025, t0);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.03); // 30 ms tick
+  o.connect(g).connect(audioCtx.destination);
+  o.start(t0); o.stop(t0 + 0.04);
 }
-function scheduleAmbient(){
-  if(!soundOn) return;
-  const scale = ambientMood > 0.4 ? SCALE_MELLOW : SCALE_BRIGHT;
-  const note = scale[Math.floor(Math.random()*scale.length)];
-  playTone(note, 6 + Math.random()*4, 0.014);
-  // occasionally a soft fifth below, layered
-  if(Math.random() < 0.3) setTimeout(()=>{ if(soundOn) playTone(note*2/3, 8, 0.008); }, 1200);
-  // sparse: one note every 7–15 s
-  ambientTimer = setTimeout(scheduleAmbient, 7000 + Math.random()*8000);
-}
-function setRainAmbience(intensity){ // 0..1 → just sets the mood of the music
-  ambientMood = intensity;
-  if(soundOn && !ambientTimer){ ensureAudio(); scheduleAmbient(); }
-}
-function stopRain(){
-  clearTimeout(ambientTimer); ambientTimer = null;
-}
+function setRainAmbience(){ /* removed */ }
+function stopRain(){ /* removed */ }
 $("sndBtn").onclick = () => {
   soundOn = !soundOn;
   $("sndBtn").classList.toggle("on", soundOn);
-  if(soundOn){ ensureAudio(); chime(660,.3); chime(990,.5); setRainAmbience(lastData ? lastData._ambient : 0); }
-  else stopRain();
+  if(soundOn){ ensureAudio(); click(); }
 };
 
 /* ───────────────────────── icons ───────────────────────── */
@@ -439,8 +417,6 @@ function render(d){
   $("foot").textContent = `FORECAST DATA · ${d._source||"OPEN-METEO"} · UPDATES EVERY 10 MIN`;
   const P = predict(d);
   d._ambient = P.rainingNow ? 1 : P.prob/100;
-  setRainAmbience(d._ambient);
-  if(P.prob >= 70 && !P.rainingNow){ chime(523,.5,.04); setTimeout(()=>chime(392,.7,.04),350); }
 
   // dial
   const R = 116, CIRC = 2*Math.PI*R;
@@ -533,7 +509,7 @@ $("search").addEventListener("input", e=>{
         LOC = {name:el.dataset.name, lat:+el.dataset.lat, lon:+el.dataset.lon};
         localStorage.setItem("rainv3loc", JSON.stringify(LOC));
         res.style.display="none"; $("search").value="";
-        chime(784,.25); load();
+        click(); load();
       });
     }catch(_){}
   }, 350);
@@ -545,7 +521,7 @@ $("gpsBtn").onclick = ()=>{
   navigator.geolocation.getCurrentPosition(p=>{
     LOC = {name:"My location", lat:p.coords.latitude, lon:p.coords.longitude};
     localStorage.setItem("rainv3loc", JSON.stringify(LOC));
-    chime(784,.25); load();
+    click(); load();
   }, ()=>alert("Location access denied — search for a city instead."));
 };
 
@@ -627,7 +603,7 @@ $("layerBtn").onclick = () => {
   const frames = curFrames();
   $("scrub").max = Math.max(0, frames.length-1);
   showFrame(frames.length-1);
-  chime(700,.2);
+  click();
 };
 function stopPlay(){ playing=false; $("playBtn").textContent="▶"; clearInterval(playTimer); }
 $("playBtn").onclick = () => {
