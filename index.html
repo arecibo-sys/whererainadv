@@ -190,7 +190,9 @@ h2{font-size:.7rem;letter-spacing:.35em;text-transform:uppercase;color:var(--cha
 <script>
 "use strict";
 /* ───────────────────────── state ───────────────────────── */
-let LOC = JSON.parse(localStorage.getItem("rainv3loc") || 'null') || {name:"Copenhagen", lat:55.6761, lon:12.5683};
+const DEFAULT_LOC = {name:"Århus", lat:56.1567, lon:10.2108};
+let SAVED = JSON.parse(localStorage.getItem("rainv3loc") || 'null');
+let LOC = SAVED || DEFAULT_LOC;
 let soundOn = false, audioCtx = null, rainNode = null, refreshTimer = null;
 
 const $ = id => document.getElementById(id);
@@ -631,8 +633,27 @@ let lastLoad = Date.now();
 const _origLoad = load;
 load = async function(){ lastLoad = Date.now(); return _origLoad(); };
 
+/* first visit: locate by IP; fall back to Århus. Saved/searched locations always win. */
+async function boot(){
+  if(!SAVED){
+    const tryIp = url => Promise.race([
+      fetch(url).then(r=>r.json()),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")), 4000))
+    ]);
+    try{
+      let g = await tryIp("https://ipwho.is/").catch(()=>null);
+      if(!g || !g.latitude) g = await tryIp("https://ipapi.co/json/").catch(()=>null);
+      if(g && g.latitude && g.longitude && !g.error){
+        LOC = {name: g.city || "My area", lat: g.latitude, lon: g.longitude};
+      }
+    }catch(_){ /* keep Århus */ }
+    if(map){ map.setView([LOC.lat,LOC.lon]); marker.setLatLng([LOC.lat,LOC.lon]); }
+  }
+  load();
+}
+
 initMap();
-load();
+boot();
 refreshTimer = setInterval(()=>load(), 10*60*1000);
 document.addEventListener("visibilitychange", ()=>{
   if(document.visibilityState === "visible"){
