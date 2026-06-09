@@ -214,45 +214,45 @@ function chime(freq=880, dur=0.4, gain=0.05){
   o.connect(g).connect(audioCtx.destination);
   o.start(); o.stop(audioCtx.currentTime + dur);
 }
-/* soft filtered-noise rain ambience, scaled to rain probability */
-function setRainAmbience(intensity){ // 0..1
-  if(!soundOn || intensity <= 0.05){ stopRain(); return; }
-  ensureAudio();
-  if(!rainNode){
-    // soft "distant rain" — brown noise, heavily low-passed, with a slow breathing swell
-    const len = audioCtx.sampleRate * 4;
-    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
-    const d = buf.getChannelData(0);
-    let last = 0;
-    for(let i=0;i<len;i++){
-      const w = Math.random()*2-1;
-      last = (last + 0.02*w) / 1.02;   // brown noise: deep, no hiss
-      d[i] = last * 3.5;
-    }
-    const src = audioCtx.createBufferSource();
-    src.buffer = buf; src.loop = true;
-    const filt = audioCtx.createBiquadFilter();
-    filt.type = "lowpass"; filt.frequency.value = 380; filt.Q.value = 0.3;
-    const g = audioCtx.createGain(); g.gain.value = 0;
-    // slow swell (~0.08 Hz) so it breathes instead of droning
-    const lfo = audioCtx.createOscillator(), lfoG = audioCtx.createGain();
-    lfo.type = "sine"; lfo.frequency.value = 0.08;
-    lfoG.gain.value = 0.004;
-    lfo.connect(lfoG).connect(g.gain);
-    lfo.start();
-    src.connect(filt).connect(g).connect(audioCtx.destination);
-    src.start();
-    rainNode = {src, g};
-  }
-  rainNode.g.gain.linearRampToValueAtTime(Math.min(0.012, 0.016*intensity), audioCtx.currentTime + 3);
+/* ambient music: sparse, soft pentatonic tones — like wind chimes far away.
+   Rainy forecast picks slightly lower, slower notes; dry picks brighter ones. */
+let ambientTimer = null, ambientMood = 0; // 0 = dry/bright, 1 = rainy/mellow
+const SCALE_BRIGHT = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50]; // C major pent.
+const SCALE_MELLOW = [392.00, 440.00, 493.88, 587.33, 659.25];          // G major pent. lower
+function playTone(freq, dur, vol){
+  const t0 = audioCtx.currentTime;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = "sine"; o.frequency.value = freq;
+  // soft harmonic an octave up for shimmer
+  const o2 = audioCtx.createOscillator(), g2 = audioCtx.createGain();
+  o2.type = "sine"; o2.frequency.value = freq*2; g2.gain.value = 0.25;
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(vol, t0 + dur*0.3);        // slow bloom
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);    // long fade
+  o.connect(g); o2.connect(g2).connect(g); g.connect(audioCtx.destination);
+  o.start(t0); o2.start(t0); o.stop(t0+dur); o2.stop(t0+dur);
+}
+function scheduleAmbient(){
+  if(!soundOn) return;
+  const scale = ambientMood > 0.4 ? SCALE_MELLOW : SCALE_BRIGHT;
+  const note = scale[Math.floor(Math.random()*scale.length)];
+  playTone(note, 6 + Math.random()*4, 0.014);
+  // occasionally a soft fifth below, layered
+  if(Math.random() < 0.3) setTimeout(()=>{ if(soundOn) playTone(note*2/3, 8, 0.008); }, 1200);
+  // sparse: one note every 7–15 s
+  ambientTimer = setTimeout(scheduleAmbient, 7000 + Math.random()*8000);
+}
+function setRainAmbience(intensity){ // 0..1 → just sets the mood of the music
+  ambientMood = intensity;
+  if(soundOn && !ambientTimer){ ensureAudio(); scheduleAmbient(); }
 }
 function stopRain(){
-  if(rainNode){ rainNode.g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1); }
+  clearTimeout(ambientTimer); ambientTimer = null;
 }
 $("sndBtn").onclick = () => {
   soundOn = !soundOn;
   $("sndBtn").classList.toggle("on", soundOn);
-  if(soundOn){ ensureAudio(); chime(660,.3); chime(990,.5); if(lastData) setRainAmbience(lastData._ambient); }
+  if(soundOn){ ensureAudio(); chime(660,.3); chime(990,.5); setRainAmbience(lastData ? lastData._ambient : 0); }
   else stopRain();
 };
 
