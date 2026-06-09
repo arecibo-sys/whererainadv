@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>RAIN — v3 Forecast Engine</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#000;
+  --champ:#F7E7CE;
+  --champ-dim:rgba(247,231,206,.55);
+  --champ-faint:rgba(247,231,206,.22);
+  --champ-ghost:rgba(247,231,206,.07);
+  --gold:#D4B886;
+  --rain:#8FB8E8;
+  --glow:rgba(247,231,206,.35);
+}
+html{font-size:16px}
+body{
+  font-family:"Avenir Next","Helvetica Neue",-apple-system,sans-serif;
+  background:radial-gradient(1200px 700px at 50% -10%, #0d0b07 0%, #000 60%);
+  color:var(--champ);min-height:100dvh;-webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+.shell{max-width:760px;margin:0 auto;padding:20px 18px 60px}
+
+/* ───── header ───── */
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.brand{font-size:.78rem;letter-spacing:.5em;text-transform:uppercase;color:var(--champ-dim)}
+.brand b{color:var(--champ);font-weight:600}
+.hbtns{display:flex;gap:8px}
+.pill{
+  background:var(--champ-ghost);border:1px solid var(--champ-faint);color:var(--champ);
+  border-radius:999px;padding:7px 14px;font-size:.78rem;cursor:pointer;letter-spacing:.08em;
+  transition:.2s;font-family:inherit;
+}
+.pill:hover{border-color:var(--champ);box-shadow:0 0 14px var(--glow)}
+.pill.on{background:var(--champ);color:#000}
+
+/* ───── search ───── */
+.searchwrap{position:relative;margin-bottom:22px}
+.search{
+  width:100%;background:var(--champ-ghost);border:1px solid var(--champ-faint);
+  color:var(--champ);border-radius:14px;padding:13px 18px;font-size:.95rem;outline:none;
+  font-family:inherit;letter-spacing:.03em;transition:.25s;
+}
+.search:focus{border-color:var(--gold);box-shadow:0 0 22px rgba(212,184,134,.18)}
+.search::placeholder{color:var(--champ-faint)}
+.results{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:50;
+  background:#0a0907;border:1px solid var(--champ-faint);border-radius:12px;overflow:hidden;display:none;
+}
+.results div{padding:11px 16px;font-size:.88rem;cursor:pointer}
+.results div:hover{background:var(--champ-ghost)}
+
+/* ───── hero dial ───── */
+.hero{display:flex;flex-wrap:wrap;gap:26px;align-items:center;justify-content:center;margin-bottom:8px}
+.dialwrap{position:relative;width:260px;height:260px;flex-shrink:0}
+.dialwrap svg{width:100%;height:100%;transform:rotate(-90deg)}
+.dialcenter{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+}
+.dialcenter .pct{font-size:3.4rem;font-weight:200;line-height:1;font-variant-numeric:tabular-nums}
+.dialcenter .pct small{font-size:1.3rem;color:var(--champ-dim)}
+.dialcenter .verdict{font-size:.72rem;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin-top:8px;max-width:170px}
+.dialcenter .sub{font-size:.72rem;color:var(--champ-dim);margin-top:6px}
+
+.heroside{min-width:220px;flex:1;max-width:300px}
+.locname{font-size:1.25rem;font-weight:500;margin-bottom:2px}
+.coords{font-size:.68rem;color:var(--champ-faint);font-family:ui-monospace,monospace;margin-bottom:14px}
+.nowrow{display:flex;justify-content:space-between;border-top:1px solid var(--champ-ghost);padding:9px 0;font-size:.85rem}
+.nowrow span:first-child{color:var(--champ-dim)}
+.nowrow span:last-child{font-variant-numeric:tabular-nums}
+
+/* ───── prediction banner ───── */
+.predict{
+  border:1px solid var(--champ-faint);border-radius:16px;padding:16px 20px;margin:20px 0;
+  background:linear-gradient(135deg, rgba(212,184,134,.07), transparent 60%);
+  font-size:.95rem;line-height:1.55;
+}
+.predict b{color:var(--gold);font-weight:600}
+.predict .tag{font-size:.66rem;letter-spacing:.3em;text-transform:uppercase;color:var(--champ-dim);display:block;margin-bottom:6px}
+
+/* ───── sections ───── */
+section{margin-bottom:26px}
+h2{font-size:.7rem;letter-spacing:.35em;text-transform:uppercase;color:var(--champ-dim);margin-bottom:12px;font-weight:500}
+
+/* nowcast timeline (next 2h, 15-min) */
+.timeline{display:flex;gap:5px;align-items:flex-end;height:110px}
+.tl{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;cursor:default}
+.tl .bar{width:100%;border-radius:3px 3px 0 0;background:linear-gradient(to top,var(--rain),rgba(143,184,232,.35));min-height:2px;transition:height .5s}
+.tl .bar.dry{background:var(--champ-ghost)}
+.tl .lbl{font-size:.58rem;color:var(--champ-faint);font-variant-numeric:tabular-nums}
+
+/* hourly strip */
+.hours{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;scrollbar-width:thin;scrollbar-color:var(--champ-faint) transparent}
+.hour{
+  flex:0 0 64px;text-align:center;border:1px solid var(--champ-ghost);border-radius:12px;padding:10px 4px;
+}
+.hour.wet{border-color:rgba(143,184,232,.45)}
+.hour .t{font-size:.62rem;color:var(--champ-dim)}
+.hour .ic{font-size:1.2rem;margin:5px 0}
+.hour .p{font-size:.72rem;color:var(--rain);font-variant-numeric:tabular-nums}
+.hour .tmp{font-size:.75rem;margin-top:3px}
+
+/* daily */
+.day{display:grid;grid-template-columns:54px 30px 1fr 70px 86px;gap:10px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--champ-ghost);font-size:.85rem}
+.day .pp{color:var(--rain);font-variant-numeric:tabular-nums;text-align:right}
+.day .range{position:relative;height:4px;background:var(--champ-ghost);border-radius:2px}
+.day .range i{position:absolute;height:100%;border-radius:2px;background:linear-gradient(90deg,var(--gold),var(--champ))}
+.day .temps{text-align:right;font-variant-numeric:tabular-nums}
+.day .temps small{color:var(--champ-dim)}
+
+/* ───── radar / satellite map ───── */
+#map{height:340px;border-radius:16px;border:1px solid var(--champ-faint);overflow:hidden;background:#000}
+.leaflet-container{background:#000!important;font-family:inherit}
+.leaflet-control-attribution{background:rgba(0,0,0,.6)!important;color:var(--champ-faint)!important;font-size:9px!important}
+.leaflet-control-attribution a{color:var(--champ-dim)!important}
+.leaflet-control-zoom a{background:rgba(0,0,0,.75)!important;color:var(--champ)!important;border-color:var(--champ-faint)!important}
+.mapbar{display:flex;align-items:center;gap:10px;margin-top:10px}
+.mapbar input[type=range]{flex:1;accent-color:var(--gold);background:transparent}
+.mapbar .frametime{font-size:.7rem;color:var(--champ-dim);font-variant-numeric:tabular-nums;min-width:88px;text-align:right}
+.mapbar .pill{padding:5px 12px;font-size:.72rem}
+
+.foot{text-align:center;font-size:.62rem;color:var(--champ-faint);letter-spacing:.15em;margin-top:30px}
+.loading{text-align:center;padding:60px 0;color:var(--champ-dim);letter-spacing:.3em;font-size:.75rem;text-transform:uppercase}
+@media(max-width:520px){.day{grid-template-columns:48px 26px 1fr 56px 78px;font-size:.78rem}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand">RAIN <b>·</b> V3</div>
+    <div class="hbtns">
+      <button class="pill" id="gpsBtn" title="Use my location">◈ GPS</button>
+      <button class="pill" id="sndBtn">♪ Sound</button>
+    </div>
+  </header>
+
+  <div class="searchwrap">
+    <input class="search" id="search" placeholder="Search a city… (e.g. Copenhagen)" autocomplete="off">
+    <div class="results" id="results"></div>
+  </div>
+
+  <section>
+    <h2>Radar · Satellite</h2>
+    <div id="map"></div>
+    <div class="mapbar">
+      <button class="pill" id="playBtn">▶</button>
+      <button class="pill" id="layerBtn">Radar</button>
+      <input type="range" id="scrub" min="0" max="0" value="0" step="1">
+      <span class="frametime" id="frametime">—</span>
+    </div>
+  </section>
+
+  <div id="app"><div class="loading">Locating…</div></div>
+
+  <div class="foot" id="foot">FORECAST DATA · UPDATES EVERY 10 MIN</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+/* ───────────────────────── state ───────────────────────── */
+let LOC = JSON.parse(localStorage.getItem("rainv3loc") || 'null') || {name:"Copenhagen", lat:55.6761, lon:12.5683};
+let soundOn = false, audioCtx = null, rainNode = null, refreshTimer = null;
+
+const $ = id => document.getElementById(id);
+const app = $("app");
+
+/* ───────────────────────── audio (gentle, non-intrusive) ───────────────────────── */
+function ensureAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state === "suspended") audioCtx.resume();
+}
+function chime(freq=880, dur=0.4, gain=0.05){
+  if(!soundOn) return;
+  ensureAudio();
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = "sine"; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+/* soft filtered-noise rain ambience, scaled to rain probability */
+function setRainAmbience(intensity){ // 0..1
+  if(!soundOn || intensity <= 0.05){ stopRain(); return; }
+  ensureAudio();
+  if(!rainNode){
+    const len = audioCtx.sampleRate * 2;
+    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i] = Math.random()*2-1;
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const filt = audioCtx.createBiquadFilter();
+    filt.type = "lowpass"; filt.frequency.value = 900; filt.Q.value = 0.4;
+    const g = audioCtx.createGain(); g.gain.value = 0;
+    src.connect(filt).connect(g).connect(audioCtx.destination);
+    src.start();
+    rainNode = {src, g};
+  }
+  rainNode.g.gain.linearRampToValueAtTime(Math.min(0.035, 0.045*intensity), audioCtx.currentTime + 1.5);
+}
+function stopRain(){
+  if(rainNode){ rainNode.g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1); }
+}
+$("sndBtn").onclick = () => {
+  soundOn = !soundOn;
+  $("sndBtn").classList.toggle("on", soundOn);
+  if(soundOn){ ensureAudio(); chime(660,.3); chime(990,.5); if(lastData) setRainAmbience(lastData._ambient); }
+  else stopRain();
+};
+
+/* ───────────────────────── icons ───────────────────────── */
+function wIcon(code, p){
+  if(code>=95) return "⛈";
+  if(code>=80 || (code>=61&&code<=67)) return "🌧";
+  if(code>=71&&code<=77) return "🌨";
+  if(code>=51&&code<=57) return "🌦";
+  if(code===45||code===48) return "🌫";
+  if(code>=1&&code<=3) return code===3?"☁️":"🌤";
+  return p>40 ? "🌦" : "☀️";
+}
+
+/* ───────────────────────── fetch ───────────────────────── */
+let lastData = null;
+async function load(){
+  app.innerHTML = '<div class="loading">Reading the sky…</div>';
+  if(map){ map.setView([LOC.lat,LOC.lon]); marker.setLatLng([LOC.lat,LOC.lon]); }
+  try{
+    const d = await fetchOpenMeteo();
+    lastData = d; render(d);
+  }catch(e){
+    try{
+      const d = await fetchMetNo(); // free fallback, no rate limit issues
+      lastData = d; render(d);
+    }catch(e2){
+      app.innerHTML = '<div class="loading">Weather services unreachable. Retrying…</div>';
+      setTimeout(load, 15000);
+    }
+  }
+}
+
+async function fetchOpenMeteo(){
+  const u = `https://api.open-meteo.com/v1/forecast?latitude=${LOC.lat}&longitude=${LOC.lon}`
+    + `&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,surface_pressure`
+    + `&minutely_15=precipitation&forecast_minutely_15=12`
+    + `&hourly=temperature_2m,precipitation_probability,precipitation,weather_code&forecast_hours=24`
+    + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum&forecast_days=7`
+    + `&timezone=auto&wind_speed_unit=ms`;
+  const d = await (await fetch(u)).json();
+  if(d.error || !d.current || !d.hourly) throw new Error(d.reason || "open-meteo error");
+  // derive 15-min probabilities from the hourly series (not a valid minutely_15 variable)
+  const m = d.minutely_15;
+  m.precipitation_probability = m.time.map(t=>{
+    const hour = t.slice(0,13);
+    const i = d.hourly.time.findIndex(h=>h.slice(0,13)===hour);
+    return i>=0 ? (d.hourly.precipitation_probability[i]||0) : 0;
+  });
+  d._source = "OPEN-METEO";
+  return d;
+}
+
+/* MET Norway locationforecast — same shape as the Open-Meteo response */
+async function fetchMetNo(){
+  const u = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${LOC.lat.toFixed(4)}&lon=${LOC.lon.toFixed(4)}`;
+  const r = await (await fetch(u)).json();
+  const ts = r.properties.timeseries;
+  if(!ts || !ts.length) throw new Error("met.no empty");
+  const sym2code = s => {
+    s = (s||"").replace(/_(day|night|polartwilight)$/,"");
+    const map = {clearsky:0,fair:1,partlycloudy:2,cloudy:3,fog:45,
+      lightrain:61,rain:63,heavyrain:65,lightrainshowers:80,rainshowers:81,heavyrainshowers:82,
+      lightsleet:66,sleet:66,heavysleet:67,lightsleetshowers:66,sleetshowers:66,heavysleetshowers:67,
+      lightsnow:71,snow:73,heavysnow:75,lightsnowshowers:85,snowshowers:85,heavysnowshowers:86,
+      lightrainandthunder:95,rainandthunder:95,heavyrainandthunder:95,
+      lightrainshowersandthunder:95,rainshowersandthunder:95,heavyrainshowersandthunder:95};
+    return map[s] ?? 3;
+  };
+  const first = ts[0].data.instant.details;
+  const probOf = e => {
+    const n1 = e.data.next_1_hours, n6 = e.data.next_6_hours;
+    const det = (n1||n6||{}).details || {};
+    if(det.probability_of_precipitation != null) return Math.round(det.probability_of_precipitation);
+    const amt = det.precipitation_amount ?? 0;
+    return amt>1 ? 90 : amt>0.3 ? 70 : amt>0 ? 45 : 0;
+  };
+  const amtOf = e => ((e.data.next_1_hours||{}).details||{}).precipitation_amount ?? 0;
+  const codeOf = e => sym2code(((e.data.next_1_hours||e.data.next_6_hours||{}).summary||{}).symbol_code);
+
+  const hourlyTs = ts.slice(0,24);
+  const hourly = {
+    time: hourlyTs.map(e=>e.time),
+    temperature_2m: hourlyTs.map(e=>e.data.instant.details.air_temperature),
+    precipitation: hourlyTs.map(amtOf),
+    precipitation_probability: hourlyTs.map(probOf),
+    weather_code: hourlyTs.map(codeOf)
+  };
+  // synthesize a 3h "15-min" timeline from the first 3 hourly entries
+  const mTime=[], mAmt=[], mProb=[];
+  for(let i=0;i<3 && i<hourlyTs.length;i++){
+    const base = new Date(hourlyTs[i].time).getTime();
+    for(let q=0;q<4;q++){
+      mTime.push(new Date(base+q*15*60000).toISOString());
+      mAmt.push(hourly.precipitation[i]/4);
+      mProb.push(hourly.precipitation_probability[i]);
+    }
+  }
+  // daily aggregation from full timeseries
+  const byDay = {};
+  ts.forEach(e=>{
+    const day = e.time.slice(0,10);
+    (byDay[day] = byDay[day]||[]).push(e);
+  });
+  const days = Object.keys(byDay).sort().slice(0,7);
+  const daily = {
+    time: days,
+    temperature_2m_max: days.map(d=>Math.max(...byDay[d].map(e=>e.data.instant.details.air_temperature))),
+    temperature_2m_min: days.map(d=>Math.min(...byDay[d].map(e=>e.data.instant.details.air_temperature))),
+    precipitation_probability_max: days.map(d=>Math.max(...byDay[d].map(probOf))),
+    precipitation_sum: days.map(d=>byDay[d].reduce((s,e)=>s+amtOf(e),0)),
+    weather_code: days.map(d=>codeOf(byDay[d][Math.min(12,byDay[d].length-1)]))
+  };
+  return {
+    _source: "MET NORWAY",
+    current: {
+      temperature_2m: first.air_temperature,
+      apparent_temperature: first.air_temperature,
+      relative_humidity_2m: Math.round(first.relative_humidity),
+      precipitation: amtOf(ts[0]),
+      weather_code: codeOf(ts[0]),
+      wind_speed_10m: first.wind_speed,
+      surface_pressure: first.air_pressure_at_sea_level
+    },
+    minutely_15: {time:mTime, precipitation:mAmt, precipitation_probability:mProb},
+    hourly, daily
+  };
+}
+
+/* ───────────────────────── prediction logic ───────────────────────── */
+function predict(d){
+  const m = d.minutely_15 || {};
+  const probs = m.precipitation_probability || [];
+  const amts  = m.precipitation || [];
+  const times = m.time || [];
+  const now = Date.now();
+  let startIdx = -1, endIdx = -1, peak = 0;
+  for(let i=0;i<times.length;i++){
+    const wet = (amts[i]||0) > 0.05 || (probs[i]||0) >= 55;
+    peak = Math.max(peak, probs[i]||0);
+    if(wet && startIdx<0) startIdx = i;
+    if(!wet && startIdx>=0 && endIdx<0 && i>startIdx) endIdx = i;
+  }
+  const fmt = t => new Date(t).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  const minsTo = t => Math.round((new Date(t).getTime()-now)/60000);
+  const rainingNow = (d.current.precipitation||0) > 0.05;
+
+  // headline probability: max over next 2h, fallback to first hours
+  const hp = d.hourly.precipitation_probability || [];
+  const next2h = Math.max(peak, hp[0]||0, hp[1]||0, 0);
+
+  let verdict, detail;
+  if(rainingNow){
+    verdict = "Raining now";
+    detail = endIdx>0
+      ? `It's raining now — expected to <b>ease off around ${fmt(times[endIdx])}</b> (~${minsTo(times[endIdx])} min).`
+      : `It's raining now and the next 3 hours stay wet. Peak chance <b>${next2h}%</b>.`;
+  } else if(startIdx>=0){
+    const mins = minsTo(times[startIdx]);
+    verdict = mins<=20 ? "Rain imminent" : "Rain approaching";
+    detail = `Rain likely to <b>start around ${fmt(times[startIdx])}</b> (~${mins} min from now)`
+      + (endIdx>0 ? `, stopping near <b>${fmt(times[endIdx])}</b>.` : `.`)
+      + ` Peak chance <b>${peak}%</b>.`;
+  } else {
+    // look ahead in the hourly series for the first wet hour today/tonight
+    let h = -1;
+    for(let i=0;i<Math.min(24,hp.length);i++){ if((hp[i]||0)>=55 || (d.hourly.precipitation[i]||0)>0.2){ h=i; break; } }
+    if(h>=0){
+      const ht = new Date(d.hourly.time[h]);
+      verdict = "Dry for now";
+      detail = `No rain in the next 3 hours. Next likely rain: <b>${ht.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</b> (${hp[h]}% chance).`;
+    } else {
+      verdict = "Clear skies ahead";
+      detail = `No significant rain predicted in the next <b>24 hours</b>. Max chance today: <b>${Math.max(0,...hp.slice(0,24))}%</b>.`;
+    }
+  }
+  return {verdict, detail, prob: next2h, rainingNow};
+}
+
+/* ───────────────────────── render ───────────────────────── */
+function render(d){
+  const c = d.current;
+  if(map) $("scrub").max = Math.max(0, curFrames().length-1); // forecast frames now available
+  $("foot").textContent = `FORECAST DATA · ${d._source||"OPEN-METEO"} · UPDATES EVERY 10 MIN`;
+  const P = predict(d);
+  d._ambient = P.rainingNow ? 1 : P.prob/100;
+  setRainAmbience(d._ambient);
+  if(P.prob >= 70 && !P.rainingNow){ chime(523,.5,.04); setTimeout(()=>chime(392,.7,.04),350); }
+
+  // dial
+  const R = 116, CIRC = 2*Math.PI*R;
+  const dash = CIRC * P.prob/100;
+
+  // nowcast bars
+  const m = d.minutely_15 || {};
+  let tlHTML = "";
+  const maxAmt = Math.max(0.3, ...(m.precipitation||[]));
+  (m.time||[]).forEach((t,i)=>{
+    const amt = m.precipitation[i]||0, pr = (m.precipitation_probability||[])[i]||0;
+    const h = Math.max(2, (amt/maxAmt)*92 * (amt>0?1:0) || (pr>50? pr*0.4 : 2));
+    const dry = amt<=0.02 && pr<50;
+    tlHTML += `<div class="tl" title="${pr}% · ${amt.toFixed(2)}mm"><div class="bar ${dry?'dry':''}" style="height:${h}px"></div><div class="lbl">${new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div></div>`;
+  });
+
+  // hourly
+  let hrHTML = "";
+  for(let i=0;i<24;i++){
+    const pp = d.hourly.precipitation_probability[i]||0;
+    hrHTML += `<div class="hour ${pp>=50?'wet':''}">
+      <div class="t">${new Date(d.hourly.time[i]).toLocaleTimeString([],{hour:'2-digit'})}</div>
+      <div class="ic">${wIcon(d.hourly.weather_code[i], pp)}</div>
+      <div class="p">${pp}%</div>
+      <div class="tmp">${Math.round(d.hourly.temperature_2m[i])}°</div></div>`;
+  }
+
+  // daily
+  const dl = d.daily;
+  const weekMin = Math.min(...dl.temperature_2m_min), weekMax = Math.max(...dl.temperature_2m_max);
+  let dayHTML = "";
+  dl.time.forEach((t,i)=>{
+    const lo = dl.temperature_2m_min[i], hi = dl.temperature_2m_max[i];
+    const l = ((lo-weekMin)/(weekMax-weekMin||1))*100, w = ((hi-lo)/(weekMax-weekMin||1))*100;
+    dayHTML += `<div class="day">
+      <span>${i===0?'Today':new Date(t).toLocaleDateString([],{weekday:'short'})}</span>
+      <span>${wIcon(dl.weather_code[i], dl.precipitation_probability_max[i])}</span>
+      <div class="range"><i style="left:${l}%;width:${Math.max(4,w)}%"></i></div>
+      <span class="pp">${dl.precipitation_probability_max[i]||0}% ☂</span>
+      <span class="temps"><small>${Math.round(lo)}°</small> / ${Math.round(hi)}°</span>
+    </div>`;
+  });
+
+  app.innerHTML = `
+  <div class="hero">
+    <div class="dialwrap">
+      <svg viewBox="0 0 260 260">
+        <circle cx="130" cy="130" r="${R}" fill="none" stroke="rgba(247,231,206,.08)" stroke-width="10"/>
+        <circle cx="130" cy="130" r="${R}" fill="none" stroke="${P.prob>=50?'#8FB8E8':'#D4B886'}" stroke-width="10"
+          stroke-linecap="round" stroke-dasharray="${dash} ${CIRC}" style="filter:drop-shadow(0 0 8px ${P.prob>=50?'rgba(143,184,232,.5)':'rgba(212,184,134,.4)'});transition:stroke-dasharray 1s"/>
+      </svg>
+      <div class="dialcenter">
+        <div class="pct">${P.prob}<small>%</small></div>
+        <div class="verdict">${P.verdict}</div>
+        <div class="sub">rain chance · next 2 h</div>
+      </div>
+    </div>
+    <div class="heroside">
+      <div class="locname">${LOC.name}</div>
+      <div class="coords">${LOC.lat.toFixed(4)}, ${LOC.lon.toFixed(4)}</div>
+      <div class="nowrow"><span>Temperature</span><span>${c.temperature_2m}° (feels ${Math.round(c.apparent_temperature)}°)</span></div>
+      <div class="nowrow"><span>Humidity</span><span>${c.relative_humidity_2m}%</span></div>
+      <div class="nowrow"><span>Wind</span><span>${c.wind_speed_10m} m/s</span></div>
+      <div class="nowrow"><span>Pressure</span><span>${Math.round(c.surface_pressure)} hPa</span></div>
+      <div class="nowrow"><span>Precip now</span><span>${c.precipitation} mm</span></div>
+    </div>
+  </div>
+
+  <div class="predict"><span class="tag">Prediction</span>${P.detail}</div>
+
+  <section><h2>Next 3 hours · 15-min resolution</h2><div class="timeline">${tlHTML}</div></section>
+  <section><h2>Next 24 hours</h2><div class="hours">${hrHTML}</div></section>
+  <section><h2>7-day outlook</h2>${dayHTML}</section>`;
+}
+
+/* ───────────────────────── geocoding search ───────────────────────── */
+let searchTimer;
+$("search").addEventListener("input", e=>{
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if(q.length<2){ $("results").style.display="none"; return; }
+  searchTimer = setTimeout(async ()=>{
+    try{
+      const r = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=en`)).json();
+      const res = $("results");
+      res.innerHTML = (r.results||[]).map(x=>
+        `<div data-lat="${x.latitude}" data-lon="${x.longitude}" data-name="${x.name}${x.country?', '+x.country:''}">${x.name}${x.admin1?' · '+x.admin1:''}${x.country?' · '+x.country:''}</div>`).join("") || "<div>No results</div>";
+      res.style.display = "block";
+      res.querySelectorAll("div[data-lat]").forEach(el=>el.onclick=()=>{
+        LOC = {name:el.dataset.name, lat:+el.dataset.lat, lon:+el.dataset.lon};
+        localStorage.setItem("rainv3loc", JSON.stringify(LOC));
+        res.style.display="none"; $("search").value="";
+        chime(784,.25); load();
+      });
+    }catch(_){}
+  }, 350);
+});
+document.addEventListener("click", e=>{ if(!e.target.closest(".searchwrap")) $("results").style.display="none"; });
+
+/* ───────────────────────── GPS ───────────────────────── */
+$("gpsBtn").onclick = ()=>{
+  navigator.geolocation.getCurrentPosition(p=>{
+    LOC = {name:"My location", lat:p.coords.latitude, lon:p.coords.longitude};
+    localStorage.setItem("rainv3loc", JSON.stringify(LOC));
+    chime(784,.25); load();
+  }, ()=>alert("Location access denied — search for a city instead."));
+};
+
+/* ───────────────────────── radar / satellite map (RainViewer) ───────────────────────── */
+let map=null, tileLayer=null, marker=null;
+let RV={host:"https://tilecache.rainviewer.com", frames:[], satFrames:[]};
+let mode="radar", frameIdx=0, playing=false, playTimer=null;
+
+function initMap(){
+  map = L.map("map",{zoomControl:true, attributionControl:true}).setView([LOC.lat,LOC.lon], 7);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+    {maxZoom:12, attribution:"© OSM © CARTO · © RainViewer"}).addTo(map);
+  marker = L.circleMarker([LOC.lat,LOC.lon],{radius:6,color:"#D4B886",fillColor:"#F7E7CE",fillOpacity:.9,weight:2}).addTo(map);
+  fetchFrames();
+  setInterval(fetchFrames, 10*60*1000);
+}
+
+async function fetchFrames(){
+  try{
+    const r = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json();
+    RV.host = r.host || RV.host;
+    RV.frames = [...(r.radar?.past||[]), ...(r.radar?.nowcast||[])];
+    RV.satFrames = r.satellite?.infrared || [];
+    $("layerBtn").style.display = RV.satFrames.length ? "" : "none";
+    const frames = curFrames();
+    $("scrub").max = Math.max(0, frames.length-1);
+    // default to "now" = last past radar frame
+    frameIdx = mode==="radar" ? Math.max(0,(r.radar?.past||[]).length-1) : frames.length-1;
+    $("scrub").value = frameIdx;
+    showFrame(frameIdx);
+  }catch(e){ $("frametime").textContent = "radar offline"; }
+}
+
+/* forecast frames synthesized from the 15-min prediction series (no extra API calls) */
+function forecastFrames(){
+  if(mode!=="radar" || !lastData || !lastData.minutely_15) return [];
+  const m = lastData.minutely_15;
+  return m.time.map((t,i)=>({fcst:true, time:new Date(t).getTime()/1000,
+    amt:m.precipitation[i]||0, prob:m.precipitation_probability[i]||0}));
+}
+const curFrames = () => mode==="radar" ? [...RV.frames, ...forecastFrames()] : RV.satFrames;
+
+let fcstLayer = null;
+function clearFcst(){ if(fcstLayer){ map.removeLayer(fcstLayer); fcstLayer=null; } }
+
+function showFrame(i){
+  const frames = curFrames();
+  if(!frames.length) return;
+  $("scrub").max = frames.length-1;
+  frameIdx = Math.max(0, Math.min(i, frames.length-1));
+  const f = frames[frameIdx];
+  if(tileLayer) map.removeLayer(tileLayer);
+  clearFcst();
+  if(f.fcst){
+    // predicted rain: soft glow over the location, sized by intensity/probability
+    const intensity = Math.min(1, f.amt/1.5 + (f.amt>0 ? .25 : 0) + (f.prob>=55 ? .2 : 0));
+    if(intensity > 0.05){
+      fcstLayer = L.layerGroup([
+        L.circle([LOC.lat,LOC.lon],{radius:26000,stroke:false,fillColor:"#4A90E2",fillOpacity:.10+intensity*.12}),
+        L.circle([LOC.lat,LOC.lon],{radius:14000,stroke:false,fillColor:"#5BA3F5",fillOpacity:.12+intensity*.22}),
+        L.circle([LOC.lat,LOC.lon],{radius:6000,stroke:false,fillColor:"#8FB8E8",fillOpacity:.15+intensity*.35})
+      ]).addTo(map);
+    }
+  } else {
+    const color = mode==="radar" ? "/2/1_1.png" : "/0/0_0.png";
+    tileLayer = L.tileLayer(`${RV.host}${f.path}/256/{z}/{x}/{y}${color}`,
+      {tileSize:256, opacity: mode==="radar"?0.8:0.55, maxZoom:12,
+       errorTileUrl:"data:image/gif;base64,R0lGODlhAQABAAAAACw="}).addTo(map);
+  }
+  const t = new Date(f.time*1000);
+  $("frametime").textContent = (f.fcst?"⟡ ":"") + t.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) + (f.fcst?" fcst":"");
+  $("scrub").value = frameIdx;
+}
+
+$("scrub").oninput = e => { stopPlay(); showFrame(+e.target.value); };
+$("layerBtn").onclick = () => {
+  mode = mode==="radar" ? "sat" : "radar";
+  $("layerBtn").textContent = mode==="radar" ? "Radar" : "Satellite";
+  const frames = curFrames();
+  $("scrub").max = Math.max(0, frames.length-1);
+  showFrame(frames.length-1);
+  chime(700,.2);
+};
+function stopPlay(){ playing=false; $("playBtn").textContent="▶"; clearInterval(playTimer); }
+$("playBtn").onclick = () => {
+  if(playing){ stopPlay(); return; }
+  playing = true; $("playBtn").textContent = "⏸";
+  playTimer = setInterval(()=>{
+    const frames = curFrames();
+    showFrame((frameIdx+1) % frames.length);
+  }, 600);
+};
+
+/* ───────────────────────── boot + auto-refresh ───────────────────────── */
+initMap();
+load();
+refreshTimer = setInterval(load, 10*60*1000);
+</script>
+</body>
+</html>
