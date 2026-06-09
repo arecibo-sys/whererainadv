@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RAIN v3">
 <title>RAIN — v3 Forecast Engine</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
@@ -23,7 +28,8 @@ body{
   background:radial-gradient(1200px 700px at 50% -10%, #0d0b07 0%, #000 60%);
   color:var(--champ);min-height:100dvh;-webkit-font-smoothing:antialiased;overflow-x:hidden;
 }
-.shell{max-width:760px;margin:0 auto;padding:20px 18px 60px}
+.shell{max-width:980px;margin:0 auto;padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(50px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))}
+button,input{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
 /* ───── header ───── */
 header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
@@ -32,8 +38,8 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .hbtns{display:flex;gap:8px}
 .pill{
   background:var(--champ-ghost);border:1px solid var(--champ-faint);color:var(--champ);
-  border-radius:999px;padding:7px 14px;font-size:.78rem;cursor:pointer;letter-spacing:.08em;
-  transition:.2s;font-family:inherit;
+  border-radius:999px;padding:9px 16px;font-size:.78rem;cursor:pointer;letter-spacing:.08em;
+  transition:.2s;font-family:inherit;min-height:40px;
 }
 .pill:hover{border-color:var(--champ);box-shadow:0 0 14px var(--glow)}
 .pill.on{background:var(--champ);color:#000}
@@ -42,16 +48,16 @@ header{display:flex;justify-content:space-between;align-items:center;margin-bott
 .searchwrap{position:relative;margin-bottom:22px}
 .search{
   width:100%;background:var(--champ-ghost);border:1px solid var(--champ-faint);
-  color:var(--champ);border-radius:14px;padding:13px 18px;font-size:.95rem;outline:none;
-  font-family:inherit;letter-spacing:.03em;transition:.25s;
+  color:var(--champ);border-radius:14px;padding:13px 18px;font-size:16px;outline:none;
+  font-family:inherit;letter-spacing:.03em;transition:.25s;-webkit-appearance:none;
 }
 .search:focus{border-color:var(--gold);box-shadow:0 0 22px rgba(212,184,134,.18)}
 .search::placeholder{color:var(--champ-faint)}
 .results{
-  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:50;
-  background:#0a0907;border:1px solid var(--champ-faint);border-radius:12px;overflow:hidden;display:none;
+  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:1200;
+  background:#0a0907;border:1px solid var(--champ-faint);border-radius:12px;overflow-y:auto;max-height:46vh;display:none;
 }
-.results div{padding:11px 16px;font-size:.88rem;cursor:pointer}
+.results div{padding:13px 16px;font-size:.88rem;cursor:pointer}
 .results div:hover{background:var(--champ-ghost)}
 
 /* ───── hero dial ───── */
@@ -94,7 +100,8 @@ h2{font-size:.7rem;letter-spacing:.35em;text-transform:uppercase;color:var(--cha
 .tl .lbl{font-size:.58rem;color:var(--champ-faint);font-variant-numeric:tabular-nums}
 
 /* hourly strip */
-.hours{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;scrollbar-width:thin;scrollbar-color:var(--champ-faint) transparent}
+.hours{display:flex;gap:10px;overflow-x:auto;padding-bottom:10px;scrollbar-width:thin;scrollbar-color:var(--champ-faint) transparent;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-snap-type:x proximity}
+.hour{scroll-snap-align:start}
 .hour{
   flex:0 0 64px;text-align:center;border:1px solid var(--champ-ghost);border-radius:12px;padding:10px 4px;
 }
@@ -113,19 +120,39 @@ h2{font-size:.7rem;letter-spacing:.35em;text-transform:uppercase;color:var(--cha
 .day .temps small{color:var(--champ-dim)}
 
 /* ───── radar / satellite map ───── */
-#map{height:340px;border-radius:16px;border:1px solid var(--champ-faint);overflow:hidden;background:#000}
+#map{height:clamp(260px, 42vh, 420px);border-radius:16px;border:1px solid var(--champ-faint);overflow:hidden;background:#000}
 .leaflet-container{background:#000!important;font-family:inherit}
 .leaflet-control-attribution{background:rgba(0,0,0,.6)!important;color:var(--champ-faint)!important;font-size:9px!important}
 .leaflet-control-attribution a{color:var(--champ-dim)!important}
 .leaflet-control-zoom a{background:rgba(0,0,0,.75)!important;color:var(--champ)!important;border-color:var(--champ-faint)!important}
 .mapbar{display:flex;align-items:center;gap:10px;margin-top:10px}
-.mapbar input[type=range]{flex:1;accent-color:var(--gold);background:transparent}
+.mapbar input[type=range]{flex:1;accent-color:var(--gold);background:transparent;height:34px;min-width:0}
 .mapbar .frametime{font-size:.7rem;color:var(--champ-dim);font-variant-numeric:tabular-nums;min-width:88px;text-align:right}
 .mapbar .pill{padding:5px 12px;font-size:.72rem}
 
 .foot{text-align:center;font-size:.62rem;color:var(--champ-faint);letter-spacing:.15em;margin-top:30px}
 .loading{text-align:center;padding:60px 0;color:var(--champ-dim);letter-spacing:.3em;font-size:.75rem;text-transform:uppercase}
-@media(max-width:520px){.day{grid-template-columns:48px 26px 1fr 56px 78px;font-size:.78rem}}
+/* ───── responsive ───── */
+@media(max-width:520px){
+  .day{grid-template-columns:48px 26px 1fr 56px 78px;font-size:.78rem}
+  .dialwrap{width:210px;height:210px}
+  .dialcenter .pct{font-size:2.7rem}
+  .hero{gap:16px}
+  .heroside{max-width:none;flex-basis:100%}
+  .brand{letter-spacing:.3em}
+  .timeline{height:90px;gap:3px}
+  .tl .lbl{font-size:.5rem}
+  .tl:nth-child(even) .lbl{visibility:hidden}
+  .mapbar{flex-wrap:wrap}
+  .mapbar .frametime{min-width:70px}
+}
+/* desktop: map and current conditions side by side */
+@media(min-width:880px){
+  .shell{padding-top:30px}
+  #map{height:380px}
+  .hero{justify-content:flex-start}
+}
+@media(hover:none){ .pill:hover{box-shadow:none} }
 </style>
 </head>
 <body>
@@ -599,9 +626,21 @@ $("playBtn").onclick = () => {
 };
 
 /* ───────────────────────── boot + auto-refresh ───────────────────────── */
+/* iOS suspends timers in background — refresh when the app comes back if data is stale */
+let lastLoad = Date.now();
+const _origLoad = load;
+load = async function(){ lastLoad = Date.now(); return _origLoad(); };
+
 initMap();
 load();
-refreshTimer = setInterval(load, 10*60*1000);
+refreshTimer = setInterval(()=>load(), 10*60*1000);
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible"){
+    if(Date.now() - lastLoad > 10*60*1000){ load(); fetchFrames(); }
+    if(map) setTimeout(()=>map.invalidateSize(), 200);
+  }
+});
+window.addEventListener("orientationchange", ()=>{ if(map) setTimeout(()=>map.invalidateSize(), 300); });
 </script>
 </body>
 </html>
